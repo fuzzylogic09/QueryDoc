@@ -101,12 +101,20 @@ export async function listFiles(maxResults: number): Promise<DriveFile[]> {
     .join(' or ');
 
   while (files.length < maxResults) {
-    const response = await gapi.client.drive.files.list({
-      pageSize: Math.min(100, maxResults - files.length),
-      fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, size, md5Checksum)',
-      q: `(${typeQuery}) and trashed=false`,
-      pageToken,
-    });
+    let response;
+    try {
+      response = await gapi.client.drive.files.list({
+        pageSize: Math.min(100, maxResults - files.length),
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, size, md5Checksum)',
+        q: `(${typeQuery}) and trashed=false`,
+        pageToken,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      });
+    } catch (err: unknown) {
+      const msg = extractErrorMessage(err);
+      throw new Error(msg);
+    }
 
     const result = response.result;
     if (result.files) {
@@ -117,6 +125,26 @@ export async function listFiles(maxResults: number): Promise<DriveFile[]> {
   }
 
   return files.slice(0, maxResults);
+}
+
+function extractErrorMessage(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'string') return err;
+  if (err && typeof err === 'object') {
+    const e = err as Record<string, any>;
+    if (e.result?.error?.message) return e.result.error.message;
+    if (e.body) {
+      try {
+        const body = JSON.parse(e.body);
+        if (body.error?.message) return body.error.message;
+      } catch { /* ignore */ }
+      return e.body;
+    }
+    if (e.message) return e.message;
+    if (e.statusText) return `${e.status} ${e.statusText}`;
+    try { return JSON.stringify(err); } catch { /* ignore */ }
+  }
+  return String(err);
 }
 
 export async function downloadFile(fileId: string, mimeType: string): Promise<ArrayBuffer | string> {

@@ -32,7 +32,8 @@ export async function synchronize(
     files = await listFiles(settings.maxDocuments);
   } catch (e) {
     progress.phase = 'error';
-    progress.errors.push(`Failed to list files: ${e}`);
+    const msg = e instanceof Error ? e.message : JSON.stringify(e);
+    progress.errors.push(`Failed to list files: ${msg}`);
     onProgress({ ...progress });
     return;
   }
@@ -116,7 +117,8 @@ export async function synchronize(
       };
       await db.documents.put(doc);
     } catch (e) {
-      progress.errors.push(`${file.name}: ${e}`);
+      const errMsg = e instanceof Error ? e.message : JSON.stringify(e);
+      progress.errors.push(`${file.name}: ${errMsg}`);
       await db.documents.put({
         id: file.id,
         name: file.name,
