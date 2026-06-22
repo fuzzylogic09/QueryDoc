@@ -237,6 +237,84 @@ export async function getFileInfo(fileId: string): Promise<DriveFile> {
   }
 }
 
+export async function listSharedDrives(): Promise<DriveItem[]> {
+  const drives: DriveItem[] = [];
+  let pageToken: string | undefined;
+
+  while (true) {
+    let response;
+    try {
+      response = await gapi.client.drive.drives.list({
+        pageSize: 100,
+        fields: 'nextPageToken, drives(id, name)',
+        pageToken,
+      });
+    } catch (err: unknown) {
+      throw new Error(extractErrorMessage(err));
+    }
+
+    const result = response.result;
+    if (result.drives) {
+      for (const d of result.drives) {
+        drives.push({
+          id: d.id,
+          name: d.name,
+          mimeType: FOLDER_TYPE,
+          modifiedTime: '',
+          isFolder: true,
+        });
+      }
+    }
+    pageToken = result.nextPageToken as string | undefined;
+    if (!pageToken) break;
+  }
+
+  return drives;
+}
+
+export async function listSharedWithMe(): Promise<DriveItem[]> {
+  const items: DriveItem[] = [];
+  let pageToken: string | undefined;
+
+  while (true) {
+    let response;
+    try {
+      response = await gapi.client.drive.files.list({
+        pageSize: 100,
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, size)',
+        q: 'sharedWithMe=true and trashed=false',
+        orderBy: 'folder,name',
+        pageToken,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      });
+    } catch (err: unknown) {
+      throw new Error(extractErrorMessage(err));
+    }
+
+    const result = response.result;
+    if (result.files) {
+      for (const f of result.files) {
+        const isFolder = f.mimeType === FOLDER_TYPE;
+        if (isFolder || isSupportedType(f.mimeType)) {
+          items.push({
+            id: f.id,
+            name: f.name,
+            mimeType: f.mimeType,
+            modifiedTime: f.modifiedTime || '',
+            size: f.size,
+            isFolder,
+          });
+        }
+      }
+    }
+    pageToken = result.nextPageToken as string | undefined;
+    if (!pageToken) break;
+  }
+
+  return items;
+}
+
 function extractErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === 'string') return err;

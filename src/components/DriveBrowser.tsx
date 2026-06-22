@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { listFolder, type DriveItem } from '../services/google-drive';
+import { listFolder, listSharedDrives, listSharedWithMe, type DriveItem } from '../services/google-drive';
 import type { SelectedDriveItem } from '../types';
 import './DriveBrowser.css';
 
@@ -13,7 +13,10 @@ interface Props {
   onSelectionChange: (items: SelectedDriveItem[]) => void;
 }
 
+type DriveSource = 'my-drive' | 'shared-drives' | 'shared-with-me';
+
 export function DriveBrowser({ selectedItems, onSelectionChange }: Props) {
+  const [source, setSource] = useState<DriveSource>('my-drive');
   const [items, setItems] = useState<DriveItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -25,19 +28,37 @@ export function DriveBrowser({ selectedItems, onSelectionChange }: Props) {
   const currentPath = breadcrumbs.map(b => b.name).join('/');
 
   useEffect(() => {
-    loadFolder(currentFolderId);
-  }, [currentFolderId]);
+    loadCurrentView();
+  }, [currentFolderId, source]);
 
-  async function loadFolder(folderId: string) {
+  async function loadCurrentView() {
     setLoading(true);
     setError('');
     try {
-      const result = await listFolder(folderId);
-      setItems(result);
+      if (source === 'shared-drives' && breadcrumbs.length === 1) {
+        const drives = await listSharedDrives();
+        setItems(drives);
+      } else if (source === 'shared-with-me' && breadcrumbs.length === 1) {
+        const shared = await listSharedWithMe();
+        setItems(shared);
+      } else {
+        const result = await listFolder(currentFolderId);
+        setItems(result);
+      }
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     }
     setLoading(false);
+  }
+
+  function switchSource(s: DriveSource) {
+    setSource(s);
+    const labels: Record<DriveSource, { id: string; name: string }> = {
+      'my-drive': { id: 'root', name: 'My Drive' },
+      'shared-drives': { id: 'shared-drives-root', name: 'Shared Drives' },
+      'shared-with-me': { id: 'shared-with-me-root', name: 'Shared with me' },
+    };
+    setBreadcrumbs([labels[s]]);
   }
 
   function navigateToFolder(item: DriveItem) {
@@ -107,8 +128,23 @@ export function DriveBrowser({ selectedItems, onSelectionChange }: Props) {
   const folders = items.filter(i => i.isFolder);
   const files = items.filter(i => !i.isFolder);
 
+  const isAtSourceRoot = breadcrumbs.length === 1;
+  const showAddFolder = !isAtSourceRoot || source === 'my-drive';
+
   return (
     <div className="drive-browser">
+      <div className="source-tabs">
+        <button className={`source-tab ${source === 'my-drive' ? 'active' : ''}`} onClick={() => switchSource('my-drive')}>
+          My Drive
+        </button>
+        <button className={`source-tab ${source === 'shared-drives' ? 'active' : ''}`} onClick={() => switchSource('shared-drives')}>
+          Shared Drives
+        </button>
+        <button className={`source-tab ${source === 'shared-with-me' ? 'active' : ''}`} onClick={() => switchSource('shared-with-me')}>
+          Shared with me
+        </button>
+      </div>
+
       <div className="browser-toolbar">
         <div className="breadcrumbs">
           {breadcrumbs.map((b, i) => (
@@ -124,9 +160,11 @@ export function DriveBrowser({ selectedItems, onSelectionChange }: Props) {
           ))}
         </div>
         <div className="browser-actions">
-          <button className="btn btn-secondary btn-sm" onClick={addCurrentFolder} disabled={isSelected(currentFolderId)}>
-            Add folder
-          </button>
+          {showAddFolder && (
+            <button className="btn btn-secondary btn-sm" onClick={addCurrentFolder} disabled={isSelected(currentFolderId)}>
+              Add folder
+            </button>
+          )}
           <button className="btn btn-secondary btn-sm" onClick={addAllFiles} disabled={files.length === 0}>
             Add all files
           </button>
@@ -140,7 +178,13 @@ export function DriveBrowser({ selectedItems, onSelectionChange }: Props) {
       ) : (
         <div className="browser-list">
           {folders.length === 0 && files.length === 0 && (
-            <div className="browser-empty">This folder is empty or contains no supported files.</div>
+            <div className="browser-empty">
+              {source === 'shared-drives' && isAtSourceRoot
+                ? 'No shared drives found. Your organization may not use shared drives.'
+                : source === 'shared-with-me' && isAtSourceRoot
+                  ? 'No files or folders have been shared with you.'
+                  : 'This folder is empty or contains no supported files.'}
+            </div>
           )}
           {folders.map(item => (
             <div key={item.id} className="browser-item folder" onDoubleClick={() => navigateToFolder(item)}>
