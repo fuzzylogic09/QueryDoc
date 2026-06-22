@@ -2,13 +2,14 @@ import { useState } from 'react';
 import { ChatView } from './components/ChatView';
 import { SyncView } from './components/SyncView';
 import { DocumentsView } from './components/DocumentsView';
+import { GraphView } from './components/GraphView';
 import { SettingsView } from './components/SettingsView';
 import { StatusFooter } from './components/StatusFooter';
 import { useActivityLog } from './hooks/useActivityLog';
 import { DEFAULT_SETTINGS, type AppSettings } from './types';
 import './App.css';
 
-type Tab = 'chat' | 'sync' | 'documents' | 'settings';
+type Tab = 'chat' | 'sync' | 'documents' | 'graph' | 'settings';
 
 function App() {
   const [tab, setTab] = useState<Tab>('sync');
@@ -28,13 +29,14 @@ function App() {
     { id: 'chat', label: 'Chat' },
     { id: 'sync', label: 'Sync', badge: logger.activity.syncing },
     { id: 'documents', label: 'Documents' },
+    { id: 'graph', label: 'Graph' },
     { id: 'settings', label: 'Settings' },
   ];
 
   return (
     <div className="app">
       <header className="app-header">
-        <h1>QueryDoc <span className="version">v0.2.0</span></h1>
+        <h1>QueryDoc <span className="version">v0.3.0</span></h1>
         <p>AI Document Assistant - 100% Local</p>
       </header>
       <nav className="tabs">
@@ -53,6 +55,7 @@ function App() {
         {tab === 'chat' && <ChatView settings={settings} logger={logger} />}
         {tab === 'sync' && <SyncView settings={settings} logger={logger} />}
         {tab === 'documents' && <DocumentsView />}
+        {tab === 'graph' && <GraphView />}
         {tab === 'settings' && <SettingsView settings={settings} onSave={updateSettings} />}
       </main>
       <StatusFooter logger={logger} />
