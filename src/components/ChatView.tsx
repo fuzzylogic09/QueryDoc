@@ -6,8 +6,21 @@ import type { ChatMessage, AppSettings } from '../types';
 import type { ActivityLogger } from '../hooks/useActivityLog';
 import './ChatView.css';
 
-export function ChatView({ settings, logger }: { settings: AppSettings; logger: ActivityLogger }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+interface ChatViewProps {
+  settings: AppSettings;
+  logger: ActivityLogger;
+  messages: ChatMessage[];
+  onMessagesChange: (msgs: ChatMessage[]) => void;
+}
+
+export function ChatView({ settings, logger, messages, onMessagesChange }: ChatViewProps) {
+  const setMessages = (updater: ChatMessage[] | ((prev: ChatMessage[]) => ChatMessage[])) => {
+    if (typeof updater === 'function') {
+      onMessagesChange(updater(messages));
+    } else {
+      onMessagesChange(updater);
+    }
+  };
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [llmStatus, setLlmStatus] = useState<string>('');

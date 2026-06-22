@@ -147,3 +147,63 @@ export async function buildDocGraph(
 
   return { nodes, edges };
 }
+
+export interface SimilarChunkPair {
+  chunkA: { id: string; text: string; index: number };
+  chunkB: { id: string; text: string; index: number };
+  score: number;
+}
+
+export async function findSimilarChunksBetween(
+  docIdA: string,
+  docIdB: string,
+  topK: number = 3
+): Promise<SimilarChunkPair[]> {
+  const [chunksA, chunksB] = await Promise.all([
+    db.chunks.where('documentId').equals(docIdA).toArray(),
+    db.chunks.where('documentId').equals(docIdB).toArray(),
+  ]);
+
+  const [embsA, embsB] = await Promise.all([
+    db.embeddings.where('chunkId').anyOf(chunksA.map(c => c.id)).toArray(),
+    db.embeddings.where('chunkId').anyOf(chunksB.map(c => c.id)).toArray(),
+  ]);
+
+  const embMapA = new Map(embsA.map(e => [e.chunkId, new Float32Array(e.vector)]));
+  const embMapB = new Map(embsB.map(e => [e.chunkId, new Float32Array(e.vector)]));
+
+  const pairs: SimilarChunkPair[] = [];
+
+  for (const cA of chunksA) {
+    const vecA = embMapA.get(cA.id);
+    if (!vecA) continue;
+    for (const cB of chunksB) {
+      const vecB = embMapB.get(cB.id);
+      if (!vecB) continue;
+      const score = cosine(vecA, vecB);
+      if (pairs.length < topK) {
+        pairs.push({
+          chunkA: { id: cA.id, text: cA.text, index: cA.index },
+          chunkB: { id: cB.id, text: cB.text, index: cB.index },
+          score,
+        });
+        if (pairs.length === topK) pairs.sort((a, b) => a.score - b.score);
+      } else if (score > pairs[0].score) {
+        pairs[0] = {
+          chunkA: { id: cA.id, text: cA.text, index: cA.index },
+          chunkB: { id: cB.id, text: cB.text, index: cB.index },
+          score,
+        };
+        pairs.sort((a, b) => a.score - b.score);
+      }
+    }
+  }
+
+  pairs.sort((a, b) => b.score - a.score);
+  return pairs;
+}
+
+export async function getDocumentChunks(docId: string): Promise<{ id: string; text: string; index: number }[]> {
+  const chunks = await db.chunks.where('documentId').equals(docId).sortBy('index');
+  return chunks.map(c => ({ id: c.id, text: c.text, index: c.index }));
+}

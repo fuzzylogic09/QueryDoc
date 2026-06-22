@@ -6,7 +6,7 @@ import { GraphView } from './components/GraphView';
 import { SettingsView } from './components/SettingsView';
 import { StatusFooter } from './components/StatusFooter';
 import { useActivityLog } from './hooks/useActivityLog';
-import { DEFAULT_SETTINGS, type AppSettings } from './types';
+import { DEFAULT_SETTINGS, type AppSettings, type ChatMessage } from './types';
 import './App.css';
 
 type Tab = 'chat' | 'sync' | 'documents' | 'graph' | 'settings';
@@ -17,6 +17,7 @@ function App() {
     const saved = localStorage.getItem('querydoc_settings');
     return saved ? JSON.parse(saved) : DEFAULT_SETTINGS;
   });
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const logger = useActivityLog();
 
   function updateSettings(s: AppSettings) {
@@ -52,7 +53,7 @@ function App() {
         ))}
       </nav>
       <main className="main">
-        {tab === 'chat' && <ChatView settings={settings} logger={logger} />}
+        {tab === 'chat' && <ChatView settings={settings} logger={logger} messages={chatMessages} onMessagesChange={setChatMessages} />}
         {tab === 'sync' && <SyncView settings={settings} logger={logger} />}
         {tab === 'documents' && <DocumentsView />}
         {tab === 'graph' && <GraphView />}
