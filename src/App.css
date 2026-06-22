@@ -46,6 +46,13 @@ body {
   color: var(--primary);
 }
 
+.version {
+  font-size: 13px;
+  font-weight: 400;
+  color: var(--text-dim);
+  vertical-align: super;
+}
+
 .app-header p {
   color: var(--text-dim);
   font-size: 14px;

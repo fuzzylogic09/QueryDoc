@@ -42,11 +42,20 @@ export interface SearchResult {
 }
 
 export interface SyncProgress {
-  phase: 'listing' | 'downloading' | 'extracting' | 'chunking' | 'embedding' | 'done' | 'error';
+  phase: 'listing' | 'downloading' | 'extracting' | 'chunking' | 'embedding' | 'done' | 'error' | 'cancelled';
   total: number;
   current: number;
   currentDocument?: string;
   errors: string[];
+  skipped: number;
+}
+
+export interface SelectedDriveItem {
+  id: string;
+  name: string;
+  mimeType: string;
+  isFolder: boolean;
+  path: string;
 }
 
 export interface AppSettings {
