@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
-import { answerQuestion } from '../services/search';
+import { answerQuestion, type SearchStep } from '../services/search';
 import { initLLM, isLLMReady } from '../services/llm';
+import { getPerformanceStats, type PerfStats } from '../services/performance';
 import type { ChatMessage, AppSettings } from '../types';
 import './ChatView.css';
 
@@ -10,11 +11,21 @@ export function ChatView({ settings }: { settings: AppSettings }) {
   const [loading, setLoading] = useState(false);
   const [llmStatus, setLlmStatus] = useState<string>('');
   const [llmReady, setLlmReady] = useState(isLLMReady());
+  const [thinkingSteps, setThinkingSteps] = useState<SearchStep[]>([]);
+  const [perfStats, setPerfStats] = useState<PerfStats | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages]);
+  }, [messages, thinkingSteps]);
+
+  useEffect(() => {
+    getPerformanceStats().then(setPerfStats);
+    const interval = setInterval(() => {
+      getPerformanceStats().then(setPerfStats);
+    }, 3000);
+    return () => clearInterval(interval);
+  }, []);
 
   async function handleLoadLLM() {
     setLlmStatus('Loading LLM model...');
@@ -24,6 +35,7 @@ export function ChatView({ settings }: { settings: AppSettings }) {
       });
       setLlmReady(true);
       setLlmStatus('LLM ready');
+      getPerformanceStats().then(setPerfStats);
     } catch (e) {
       setLlmStatus(`Error: ${e}`);
     }
@@ -41,15 +53,19 @@ export function ChatView({ settings }: { settings: AppSettings }) {
     setMessages((m) => [...m, userMsg]);
     setInput('');
     setLoading(true);
+    setThinkingSteps([]);
 
     try {
-      const { answer, sources } = await answerQuestion(input, settings);
+      const { answer, sources, durationMs } = await answerQuestion(input, settings, (step) => {
+        setThinkingSteps((prev) => [...prev, step]);
+      });
       const assistantMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
         role: 'assistant',
         content: answer,
         sources,
         timestamp: new Date(),
+        durationMs,
       };
       setMessages((m) => [...m, assistantMsg]);
     } catch (e) {
@@ -62,11 +78,52 @@ export function ChatView({ settings }: { settings: AppSettings }) {
       setMessages((m) => [...m, errorMsg]);
     }
 
+    setThinkingSteps([]);
     setLoading(false);
+    getPerformanceStats().then(setPerfStats);
   }
+
+  const stepIcons: Record<string, string> = {
+    embedding: '🔢',
+    searching: '🔍',
+    found: '📄',
+    generating: '🤖',
+    done: '✅',
+  };
 
   return (
     <div className="chat-view">
+      {perfStats && (
+        <div className="stats-bar">
+          <div className="stat-item">
+            <span className="stat-label">RAM</span>
+            <span className="stat-value">{perfStats.ramUsedMB > 0 ? `${perfStats.ramUsedMB} / ${perfStats.ramTotalMB} MB` : 'N/A'}</span>
+            {perfStats.ramUsedMB > 0 && (
+              <div className="stat-bar">
+                <div
+                  className={`stat-bar-fill ${perfStats.ramPercent > 80 ? 'danger' : perfStats.ramPercent > 60 ? 'warning' : ''}`}
+                  style={{ width: `${perfStats.ramPercent}%` }}
+                />
+              </div>
+            )}
+          </div>
+          <div className="stat-item">
+            <span className="stat-label">GPU</span>
+            <span className={`stat-value ${perfStats.gpuAvailable ? 'stat-ok' : 'stat-warn'}`}>
+              {perfStats.gpuAvailable ? perfStats.gpuRenderer : 'Not available'}
+            </span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-label">CPU</span>
+            <span className="stat-value">{perfStats.cpuCores} cores</span>
+          </div>
+          <div className="stat-item">
+            <span className="stat-label">Storage</span>
+            <span className="stat-value">{perfStats.indexedDBSizeMB} MB</span>
+          </div>
+        </div>
+      )}
+
       {!llmReady && (
         <div className="card llm-init">
           <p>The LLM model needs to be loaded before you can ask questions. This downloads the model to your browser (one-time).</p>
@@ -87,6 +144,9 @@ export function ChatView({ settings }: { settings: AppSettings }) {
         {messages.map((msg) => (
           <div key={msg.id} className={`message ${msg.role}`}>
             <div className="message-content">{msg.content}</div>
+            {msg.durationMs && (
+              <div className="message-meta">answered in {(msg.durationMs / 1000).toFixed(1)}s</div>
+            )}
             {msg.sources && msg.sources.length > 0 && (
               <div className="sources">
                 <span className="sources-label">Sources:</span>
@@ -102,8 +162,23 @@ export function ChatView({ settings }: { settings: AppSettings }) {
           </div>
         ))}
         {loading && (
-          <div className="message assistant">
-            <div className="message-content typing">Thinking...</div>
+          <div className="message assistant thinking-message">
+            <div className="thinking-steps">
+              {thinkingSteps.map((step, i) => (
+                <div key={i} className={`thinking-step ${i === thinkingSteps.length - 1 ? 'active' : 'done'}`}>
+                  <span className="step-icon">{stepIcons[step.step] || '...'}</span>
+                  <span className="step-text">{step.message}</span>
+                  {i < thinkingSteps.length - 1 && <span className="step-check">done</span>}
+                </div>
+              ))}
+              {thinkingSteps.length === 0 && (
+                <div className="thinking-step active">
+                  <span className="step-icon">...</span>
+                  <span className="step-text">Starting...</span>
+                </div>
+              )}
+              <div className="thinking-dots"><span /><span /><span /></div>
+            </div>
           </div>
         )}
         <div ref={bottomRef} />
