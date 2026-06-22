@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { answerQuestion, type SearchStep } from '../services/search';
 import { initLLM, isLLMReady } from '../services/llm';
-import { getPerformanceStats, type PerfStats } from '../services/performance';
+import { getPerformanceStats, LiveMonitor, type PerfStats, type LiveMetrics } from '../services/performance';
 import type { ChatMessage, AppSettings } from '../types';
 import './ChatView.css';
 
@@ -14,11 +14,13 @@ export function ChatView({ settings }: { settings: AppSettings }) {
   const [thinkingSteps, setThinkingSteps] = useState<SearchStep[]>([]);
   const [streamingText, setStreamingText] = useState('');
   const [perfStats, setPerfStats] = useState<PerfStats | null>(null);
+  const [liveMetrics, setLiveMetrics] = useState<LiveMetrics | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+  const monitorRef = useRef<LiveMonitor | null>(null);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, thinkingSteps]);
+  }, [messages, thinkingSteps, streamingText]);
 
   useEffect(() => {
     getPerformanceStats().then(setPerfStats);
@@ -57,13 +59,25 @@ export function ChatView({ settings }: { settings: AppSettings }) {
     setThinkingSteps([]);
     setStreamingText('');
 
+    const monitor = new LiveMonitor((m) => setLiveMetrics({ ...m }));
+    monitorRef.current = monitor;
+    monitor.start();
+
     try {
-      const { answer, sources, durationMs } = await answerQuestion(input, settings, (step) => {
-        if (step.step === 'streaming') {
-          setStreamingText(step.partial);
-        } else {
-          setThinkingSteps((prev) => [...prev, step]);
-        }
+      const { answer, sources, durationMs } = await answerQuestion(input, settings, {
+        onStep: (step) => {
+          if (step.step === 'streaming') {
+            setStreamingText(step.partial);
+          } else if (step.step === 'generating') {
+            monitor.setGpuActive(true);
+            setThinkingSteps((prev) => [...prev, step]);
+          } else {
+            setThinkingSteps((prev) => [...prev, step]);
+          }
+        },
+        onToken: () => {
+          monitor.recordToken();
+        },
       });
       const assistantMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -84,6 +98,9 @@ export function ChatView({ settings }: { settings: AppSettings }) {
       setMessages((m) => [...m, errorMsg]);
     }
 
+    monitor.stop();
+    monitorRef.current = null;
+    setLiveMetrics(null);
     setThinkingSteps([]);
     setStreamingText('');
     setLoading(false);
@@ -104,30 +121,64 @@ export function ChatView({ settings }: { settings: AppSettings }) {
         <div className="stats-bar">
           <div className="stat-item">
             <span className="stat-label">RAM</span>
-            <span className="stat-value">{perfStats.ramUsedMB > 0 ? `${perfStats.ramUsedMB} / ${perfStats.ramTotalMB} MB` : 'N/A'}</span>
+            <span className="stat-value">
+              {liveMetrics
+                ? `${liveMetrics.ramUsedMB} MB (+${liveMetrics.ramDeltaMB})`
+                : perfStats.ramUsedMB > 0
+                  ? `${perfStats.ramUsedMB} / ${perfStats.ramTotalMB} MB`
+                  : 'N/A'}
+            </span>
             {perfStats.ramUsedMB > 0 && (
               <div className="stat-bar">
                 <div
                   className={`stat-bar-fill ${perfStats.ramPercent > 80 ? 'danger' : perfStats.ramPercent > 60 ? 'warning' : ''}`}
-                  style={{ width: `${perfStats.ramPercent}%` }}
+                  style={{ width: `${liveMetrics ? Math.min(100, (liveMetrics.ramUsedMB / perfStats.ramTotalMB) * 100) : perfStats.ramPercent}%` }}
                 />
               </div>
             )}
           </div>
           <div className="stat-item">
-            <span className="stat-label">GPU</span>
-            <span className={`stat-value ${perfStats.gpuAvailable ? 'stat-ok' : 'stat-warn'}`}>
-              {perfStats.gpuAvailable ? perfStats.gpuRenderer : 'Not available'}
-            </span>
-          </div>
-          <div className="stat-item">
             <span className="stat-label">CPU</span>
-            <span className="stat-value">{perfStats.cpuCores} cores</span>
+            {liveMetrics ? (
+              <>
+                <span className={`stat-value ${liveMetrics.cpuLoad > 80 ? 'stat-danger' : liveMetrics.cpuLoad > 50 ? 'stat-warn' : 'stat-ok'}`}>
+                  {liveMetrics.cpuLoad}%
+                </span>
+                <div className="stat-bar">
+                  <div
+                    className={`stat-bar-fill ${liveMetrics.cpuLoad > 80 ? 'danger' : liveMetrics.cpuLoad > 50 ? 'warning' : ''}`}
+                    style={{ width: `${liveMetrics.cpuLoad}%` }}
+                  />
+                </div>
+              </>
+            ) : (
+              <span className="stat-value">{perfStats.cpuCores} cores</span>
+            )}
           </div>
           <div className="stat-item">
-            <span className="stat-label">Storage</span>
-            <span className="stat-value">{perfStats.indexedDBSizeMB} MB</span>
+            <span className="stat-label">GPU</span>
+            {liveMetrics ? (
+              <span className={`stat-value ${liveMetrics.gpuActive ? 'stat-active' : ''}`}>
+                {liveMetrics.gpuActive ? 'Active' : 'Idle'}
+                {liveMetrics.tokensPerSec > 0 && ` · ${liveMetrics.tokensPerSec} tok/s`}
+              </span>
+            ) : (
+              <span className={`stat-value ${perfStats.gpuAvailable ? 'stat-ok' : 'stat-warn'}`}>
+                {perfStats.gpuAvailable ? perfStats.gpuRenderer : 'Not available'}
+              </span>
+            )}
           </div>
+          {liveMetrics ? (
+            <div className="stat-item">
+              <span className="stat-label">Tokens</span>
+              <span className="stat-value">{liveMetrics.totalTokens} · {liveMetrics.elapsedSec}s</span>
+            </div>
+          ) : (
+            <div className="stat-item">
+              <span className="stat-label">Storage</span>
+              <span className="stat-value">{perfStats.indexedDBSizeMB} MB</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -172,10 +223,10 @@ export function ChatView({ settings }: { settings: AppSettings }) {
           <div className="message assistant thinking-message">
             <div className="thinking-steps">
               {thinkingSteps.map((step, i) => (
-                <div key={i} className={`thinking-step ${i === thinkingSteps.length - 1 ? 'active' : 'done'}`}>
+                <div key={i} className={`thinking-step ${i === thinkingSteps.length - 1 && !streamingText ? 'active' : 'done'}`}>
                   <span className="step-icon">{stepIcons[step.step] || '...'}</span>
                   <span className="step-text">{step.message}</span>
-                  {i < thinkingSteps.length - 1 && <span className="step-check">done</span>}
+                  {(i < thinkingSteps.length - 1 || streamingText) && <span className="step-check">done</span>}
                 </div>
               ))}
               {thinkingSteps.length === 0 && (

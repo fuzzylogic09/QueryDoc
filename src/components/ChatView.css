@@ -43,6 +43,13 @@
 
 .stat-ok { color: var(--success); }
 .stat-warn { color: var(--warning); }
+.stat-danger { color: var(--danger); }
+.stat-active { color: var(--primary); animation: gpuPulse 1s infinite; }
+
+@keyframes gpuPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
 
 .stat-bar {
   width: 50px;
