@@ -7,7 +7,9 @@ declare namespace gapi {
       namespace files {
         function list(params: Record<string, any>): Promise<{ result: any }>;
         function get(params: Record<string, any>): Promise<{ result: any; body: string }>;
-        // export is accessed via bracket notation due to reserved word
+      }
+      namespace drives {
+        function list(params: Record<string, any>): Promise<{ result: any }>;
       }
     }
   }

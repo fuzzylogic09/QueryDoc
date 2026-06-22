@@ -5,6 +5,33 @@
   margin-top: 12px;
 }
 
+.source-tabs {
+  display: flex;
+  background: var(--surface2);
+  border-bottom: 1px solid var(--border);
+}
+
+.source-tab {
+  flex: 1;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.source-tab:hover {
+  color: var(--text);
+}
+
+.source-tab.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
 .browser-toolbar {
   display: flex;
   justify-content: space-between;
