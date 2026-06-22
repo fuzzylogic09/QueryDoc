@@ -3,9 +3,10 @@ import { answerQuestion, type SearchStep } from '../services/search';
 import { initLLM, isLLMReady } from '../services/llm';
 import { getPerformanceStats, LiveMonitor, type PerfStats, type LiveMetrics } from '../services/performance';
 import type { ChatMessage, AppSettings } from '../types';
+import type { ActivityLogger } from '../hooks/useActivityLog';
 import './ChatView.css';
 
-export function ChatView({ settings }: { settings: AppSettings }) {
+export function ChatView({ settings, logger }: { settings: AppSettings; logger: ActivityLogger }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -32,16 +33,21 @@ export function ChatView({ settings }: { settings: AppSettings }) {
 
   async function handleLoadLLM() {
     setLlmStatus('Loading LLM model...');
+    logger.log('info', `Loading LLM model: ${settings.llmModel}`, 'LLM');
+    logger.updateActivity({ embeddingModel: true });
     try {
       await initLLM(settings.llmModel, (info) => {
         setLlmStatus(info.text);
       });
       setLlmReady(true);
       setLlmStatus('LLM ready');
+      logger.log('success', 'LLM model loaded and ready', 'LLM');
       getPerformanceStats().then(setPerfStats);
     } catch (e) {
       setLlmStatus(`Error: ${e}`);
+      logger.log('error', `Failed to load LLM: ${e}`, 'LLM');
     }
+    logger.updateActivity({ embeddingModel: false });
   }
 
   async function handleSend() {
@@ -62,6 +68,8 @@ export function ChatView({ settings }: { settings: AppSettings }) {
     const monitor = new LiveMonitor((m) => setLiveMetrics({ ...m }));
     monitorRef.current = monitor;
     monitor.start();
+    logger.log('info', `Query: "${input}"`, 'Chat');
+    logger.updateActivity({ llmGenerating: true });
 
     try {
       const { answer, sources, durationMs } = await answerQuestion(input, settings, {
@@ -88,6 +96,7 @@ export function ChatView({ settings }: { settings: AppSettings }) {
         durationMs,
       };
       setMessages((m) => [...m, assistantMsg]);
+      logger.log('success', `Response generated in ${(durationMs / 1000).toFixed(1)}s with ${sources.length} sources`, 'Chat');
     } catch (e) {
       const errorMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -96,8 +105,10 @@ export function ChatView({ settings }: { settings: AppSettings }) {
         timestamp: new Date(),
       };
       setMessages((m) => [...m, errorMsg]);
+      logger.log('error', `Query failed: ${e}`, 'Chat');
     }
 
+    logger.updateActivity({ llmGenerating: false });
     monitor.stop();
     monitorRef.current = null;
     setLiveMetrics(null);

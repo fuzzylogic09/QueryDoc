@@ -29,6 +29,7 @@ body {
   max-width: 1000px;
   margin: 0 auto;
   padding: 16px;
+  padding-bottom: 60px;
   min-height: 100vh;
   display: flex;
   flex-direction: column;
@@ -77,6 +78,26 @@ body {
 .tab.active {
   color: var(--primary);
   border-bottom-color: var(--primary);
+}
+
+.tab {
+  position: relative;
+}
+
+.tab-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--primary);
+  animation: dotBlink 1s infinite;
+}
+
+@keyframes dotBlink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
 }
 
 .main {

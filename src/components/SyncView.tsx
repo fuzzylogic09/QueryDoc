@@ -1,16 +1,21 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { authenticate, isAuthenticated, signOut, getStoredClientId } from '../services/google-drive';
 import { synchronize } from '../services/sync';
 import { getStats } from '../db/database';
-import type { SyncProgress, AppSettings } from '../types';
+import type { AppSettings } from '../types';
+import type { ActivityLogger } from '../hooks/useActivityLog';
 
-export function SyncView({ settings }: { settings: AppSettings }) {
+export function SyncView({ settings, logger }: { settings: AppSettings; logger: ActivityLogger }) {
   const [connected, setConnected] = useState(isAuthenticated());
   const [clientId, setClientId] = useState(getStoredClientId());
-  const [syncing, setSyncing] = useState(false);
-  const [progress, setProgress] = useState<SyncProgress | null>(null);
   const [stats, setStats] = useState<{ docCount: number; chunkCount: number; embCount: number } | null>(null);
   const [error, setError] = useState('');
+
+  const syncing = logger.activity.syncing;
+
+  useEffect(() => {
+    getStats().then(setStats);
+  }, [syncing]);
 
   async function handleConnect() {
     if (!clientId.trim()) {
@@ -19,38 +24,59 @@ export function SyncView({ settings }: { settings: AppSettings }) {
     }
     setError('');
     try {
+      logger.log('info', 'Connecting to Google Drive...', 'Sync');
       await authenticate(clientId);
       setConnected(true);
+      logger.log('success', 'Connected to Google Drive', 'Sync');
     } catch (e) {
-      setError(`Authentication failed: ${e}`);
+      const msg = `Authentication failed: ${e}`;
+      setError(msg);
+      logger.log('error', msg, 'Sync');
     }
   }
 
   function handleDisconnect() {
     signOut();
     setConnected(false);
+    logger.log('info', 'Disconnected from Google Drive', 'Sync');
   }
 
   async function handleSync() {
-    setSyncing(true);
-    setProgress(null);
+    logger.updateActivity({ syncing: true, syncPhase: 'starting', syncProgress: null, syncCurrentDoc: '' });
+    logger.log('info', 'Synchronization started', 'Sync');
+
     try {
-      await synchronize(settings, (p) => setProgress({ ...p }));
+      await synchronize(settings, (p) => {
+        logger.updateActivity({
+          syncPhase: p.phase,
+          syncProgress: { current: p.current, total: p.total },
+          syncCurrentDoc: p.currentDocument || '',
+        });
+
+        if (p.phase === 'done') {
+          logger.log('success', `Synchronization complete: ${p.current} documents processed, ${p.errors.length} errors`, 'Sync');
+        }
+
+        for (const err of p.errors) {
+          if (!logger.logs.some(l => l.message === err && l.source === 'Sync')) {
+            logger.log('error', err, 'Sync');
+          }
+        }
+      });
+
       const s = await getStats();
       setStats(s);
+      logger.log('success', `Database: ${s.docCount} docs, ${s.chunkCount} chunks, ${s.embCount} embeddings`, 'Sync');
     } catch (e) {
-      setError(`Sync error: ${e}`);
+      const msg = `Sync error: ${e}`;
+      setError(msg);
+      logger.log('error', msg, 'Sync');
     }
-    setSyncing(false);
+
+    logger.updateActivity({ syncing: false, syncPhase: '', syncProgress: null, syncCurrentDoc: '' });
   }
 
-  async function loadStats() {
-    const s = await getStats();
-    setStats(s);
-  }
-
-  if (!stats) loadStats();
-
+  const progress = logger.activity.syncProgress;
   const pct = progress && progress.total > 0 ? (progress.current / progress.total) * 100 : 0;
 
   return (
@@ -90,26 +116,24 @@ export function SyncView({ settings }: { settings: AppSettings }) {
             {syncing ? 'Synchronizing...' : 'Synchronize'}
           </button>
 
-          {progress && (
+          {syncing && progress && (
             <div style={{ marginTop: 16 }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: 13, color: 'var(--text-dim)' }}>
-                <span>Phase: {progress.phase}</span>
+                <span>Phase: {logger.activity.syncPhase}</span>
                 <span>{progress.current} / {progress.total}</span>
               </div>
-              {progress.currentDocument && (
-                <p style={{ fontSize: 13, marginTop: 4 }}>{progress.currentDocument}</p>
+              {logger.activity.syncCurrentDoc && (
+                <p style={{ fontSize: 13, marginTop: 4 }}>{logger.activity.syncCurrentDoc}</p>
               )}
               <div className="progress-bar">
                 <div className="progress-fill" style={{ width: `${pct}%` }} />
               </div>
-              {progress.errors.length > 0 && (
-                <div style={{ marginTop: 8 }}>
-                  <p style={{ fontSize: 12, color: 'var(--danger)' }}>Errors ({progress.errors.length}):</p>
-                  {progress.errors.map((e, i) => (
-                    <p key={i} style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 2 }}>{e}</p>
-                  ))}
-                </div>
-              )}
+            </div>
+          )}
+
+          {!syncing && progress && progress.total > 0 && (
+            <div style={{ marginTop: 12, fontSize: 13, color: 'var(--success)' }}>
+              Last sync: {progress.current}/{progress.total} documents processed
             </div>
           )}
         </div>
