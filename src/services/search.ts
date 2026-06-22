@@ -3,11 +3,24 @@ import { computeEmbedding, searchSimilar } from './embeddings';
 import { generateResponse } from './llm';
 import type { SearchResult, AppSettings } from '../types';
 
+export type SearchStep =
+  | { step: 'embedding'; message: string }
+  | { step: 'searching'; message: string }
+  | { step: 'found'; message: string; count: number }
+  | { step: 'generating'; message: string }
+  | { step: 'done'; message: string; durationMs: number };
+
 export async function answerQuestion(
   question: string,
-  settings: AppSettings
-): Promise<{ answer: string; sources: SearchResult[] }> {
+  settings: AppSettings,
+  onStep?: (step: SearchStep) => void
+): Promise<{ answer: string; sources: SearchResult[]; durationMs: number }> {
+  const t0 = performance.now();
+
+  onStep?.({ step: 'embedding', message: 'Computing question embedding...' });
   const queryVector = await computeEmbedding(question, settings.embeddingModel);
+
+  onStep?.({ step: 'searching', message: `Searching ${await db.embeddings.count()} vectors...` });
   const results = await searchSimilar(queryVector, settings.topK);
 
   const sources: SearchResult[] = [];
@@ -22,6 +35,13 @@ export async function answerQuestion(
     contextChunks.push({ text: chunk.text, documentName: docName, section: chunk.section });
   }
 
+  onStep?.({ step: 'found', message: `Found ${sources.length} relevant chunks from ${new Set(sources.map(s => s.documentName)).size} documents`, count: sources.length });
+
+  onStep?.({ step: 'generating', message: 'Generating response with local LLM...' });
   const answer = await generateResponse(question, contextChunks);
-  return { answer, sources };
+
+  const durationMs = Math.round(performance.now() - t0);
+  onStep?.({ step: 'done', message: `Completed in ${(durationMs / 1000).toFixed(1)}s`, durationMs });
+
+  return { answer, sources, durationMs };
 }

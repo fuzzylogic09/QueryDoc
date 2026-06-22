@@ -32,6 +32,7 @@ export interface ChatMessage {
   content: string;
   sources?: SearchResult[];
   timestamp: Date;
+  durationMs?: number;
 }
 
 export interface SearchResult {
