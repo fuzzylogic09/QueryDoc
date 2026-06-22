@@ -62,6 +62,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   chunkSize: 800,
   chunkOverlap: 150,
   embeddingModel: 'Xenova/all-MiniLM-L6-v2',
-  llmModel: 'Qwen2.5-0.5B-Instruct-q4f16_1-MLC',
+  llmModel: 'Qwen2.5-1.5B-Instruct-q4f16_1-MLC',
   topK: 5,
 };
