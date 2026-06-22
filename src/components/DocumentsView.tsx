@@ -1,9 +1,12 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { db, removeDocument } from '../db/database';
+import { exportDatabase, importDatabase } from '../services/import-export';
 import type { DocumentIndex } from '../types';
 
 export function DocumentsView() {
   const [docs, setDocs] = useState<DocumentIndex[]>([]);
+  const [importStatus, setImportStatus] = useState('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   async function loadDocs() {
     const all = await db.documents.toArray();
@@ -18,6 +21,30 @@ export function DocumentsView() {
     await loadDocs();
   }
 
+  async function handleExport() {
+    const blob = await exportDatabase();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `querydoc-export-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  async function handleImport(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setImportStatus('Importing...');
+    try {
+      const result = await importDatabase(file);
+      setImportStatus(`Imported ${result.documents} documents, ${result.chunks} chunks, ${result.embeddings} embeddings`);
+      await loadDocs();
+    } catch (err) {
+      setImportStatus(`Import failed: ${err}`);
+    }
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  }
+
   const mimeLabels: Record<string, string> = {
     'application/pdf': 'PDF',
     'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'DOCX',
@@ -28,9 +55,31 @@ export function DocumentsView() {
   return (
     <div>
       <div className="card">
-        <h3 style={{ marginBottom: 12 }}>Indexed Documents ({docs.length})</h3>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+          <h3>Indexed Documents ({docs.length})</h3>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button className="btn btn-secondary" onClick={handleExport} disabled={docs.length === 0}>
+              Export Database
+            </button>
+            <button className="btn btn-secondary" onClick={() => fileInputRef.current?.click()}>
+              Import Database
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              style={{ display: 'none' }}
+              onChange={handleImport}
+            />
+          </div>
+        </div>
+        {importStatus && (
+          <p style={{ fontSize: 13, color: importStatus.includes('failed') ? 'var(--danger)' : 'var(--success)', marginBottom: 12 }}>
+            {importStatus}
+          </p>
+        )}
         {docs.length === 0 ? (
-          <p style={{ color: 'var(--text-dim)', fontSize: 14 }}>No documents indexed yet. Go to Sync to connect your Google Drive.</p>
+          <p style={{ color: 'var(--text-dim)', fontSize: 14 }}>No documents indexed yet. Go to Sync to connect your Google Drive, or import an existing database.</p>
         ) : (
           <div style={{ overflowX: 'auto' }}>
             <table>

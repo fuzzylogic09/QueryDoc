@@ -1,6 +1,6 @@
 import { db } from '../db/database';
 import { computeEmbedding, searchSimilar } from './embeddings';
-import { generateResponse } from './llm';
+import { generateResponseStreaming } from './llm';
 import type { SearchResult, AppSettings } from '../types';
 
 export type SearchStep =
@@ -8,6 +8,7 @@ export type SearchStep =
   | { step: 'searching'; message: string }
   | { step: 'found'; message: string; count: number }
   | { step: 'generating'; message: string }
+  | { step: 'streaming'; message: string; partial: string }
   | { step: 'done'; message: string; durationMs: number };
 
 export async function answerQuestion(
@@ -20,7 +21,8 @@ export async function answerQuestion(
   onStep?.({ step: 'embedding', message: 'Computing question embedding...' });
   const queryVector = await computeEmbedding(question, settings.embeddingModel);
 
-  onStep?.({ step: 'searching', message: `Searching ${await db.embeddings.count()} vectors...` });
+  const embCount = await db.embeddings.count();
+  onStep?.({ step: 'searching', message: `Searching ${embCount} vectors...` });
   const results = await searchSimilar(queryVector, settings.topK);
 
   const sources: SearchResult[] = [];
@@ -35,10 +37,14 @@ export async function answerQuestion(
     contextChunks.push({ text: chunk.text, documentName: docName, section: chunk.section });
   }
 
-  onStep?.({ step: 'found', message: `Found ${sources.length} relevant chunks from ${new Set(sources.map(s => s.documentName)).size} documents`, count: sources.length });
+  const uniqueDocs = new Set(sources.map(s => s.documentName)).size;
+  onStep?.({ step: 'found', message: `Found ${sources.length} relevant chunks from ${uniqueDocs} documents`, count: sources.length });
 
-  onStep?.({ step: 'generating', message: 'Generating response with local LLM...' });
-  const answer = await generateResponse(question, contextChunks);
+  onStep?.({ step: 'generating', message: 'Generating response...' });
+
+  const answer = await generateResponseStreaming(question, contextChunks, (_token, fullText) => {
+    onStep?.({ step: 'streaming', message: 'Generating response...', partial: fullText });
+  });
 
   const durationMs = Math.round(performance.now() - t0);
   onStep?.({ step: 'done', message: `Completed in ${(durationMs / 1000).toFixed(1)}s`, durationMs });

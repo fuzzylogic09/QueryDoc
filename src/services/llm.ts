@@ -21,14 +21,12 @@ function estimateTokens(text: string): number {
   return Math.ceil(text.length / 3.5);
 }
 
-export async function generateResponse(
+function buildPrompt(
   question: string,
   contextChunks: { text: string; documentName: string; section?: string }[]
-): Promise<string> {
-  if (!engine) throw new Error('LLM not initialized');
-
+): { messages: { role: string; content: string }[]; maxTokens: number } {
   const systemMsg = 'You are a helpful technical document assistant. Only answer based on provided sources.';
-  const promptTemplate = `You are a technical document assistant. Answer the question using ONLY the provided document excerpts. If the answer cannot be found in the sources, say so. Always reference which source(s) you used.\n\nSources:\n`;
+  const promptTemplate = 'You are a technical document assistant. Answer the question using ONLY the provided document excerpts. If the answer cannot be found in the sources, say so. Always reference which source(s) you used.\n\nSources:\n';
   const questionPart = `\n\nQuestion: ${question}`;
 
   const maxResponseTokens = 512;
@@ -46,16 +44,58 @@ export async function generateResponse(
 
   const prompt = promptTemplate + includedSources.join('\n\n') + questionPart;
 
-  const response = await engine.chat.completions.create({
+  return {
     messages: [
       { role: 'system', content: systemMsg },
       { role: 'user', content: prompt },
     ],
+    maxTokens: maxResponseTokens,
+  };
+}
+
+export async function generateResponse(
+  question: string,
+  contextChunks: { text: string; documentName: string; section?: string }[]
+): Promise<string> {
+  if (!engine) throw new Error('LLM not initialized');
+
+  const { messages, maxTokens } = buildPrompt(question, contextChunks);
+
+  const response = await engine.chat.completions.create({
+    messages,
     temperature: 0.3,
-    max_tokens: maxResponseTokens,
+    max_tokens: maxTokens,
   });
 
   return response.choices[0].message.content || 'No response generated.';
+}
+
+export async function generateResponseStreaming(
+  question: string,
+  contextChunks: { text: string; documentName: string; section?: string }[],
+  onToken: (token: string, fullText: string) => void
+): Promise<string> {
+  if (!engine) throw new Error('LLM not initialized');
+
+  const { messages, maxTokens } = buildPrompt(question, contextChunks);
+
+  const stream = await engine.chat.completions.create({
+    messages,
+    temperature: 0.3,
+    max_tokens: maxTokens,
+    stream: true,
+  });
+
+  let fullText = '';
+  for await (const chunk of stream) {
+    const delta = chunk.choices?.[0]?.delta?.content || '';
+    if (delta) {
+      fullText += delta;
+      onToken(delta, fullText);
+    }
+  }
+
+  return fullText || 'No response generated.';
 }
 
 export function isLLMReady(): boolean {

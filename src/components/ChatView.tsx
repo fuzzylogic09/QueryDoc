@@ -12,6 +12,7 @@ export function ChatView({ settings }: { settings: AppSettings }) {
   const [llmStatus, setLlmStatus] = useState<string>('');
   const [llmReady, setLlmReady] = useState(isLLMReady());
   const [thinkingSteps, setThinkingSteps] = useState<SearchStep[]>([]);
+  const [streamingText, setStreamingText] = useState('');
   const [perfStats, setPerfStats] = useState<PerfStats | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
 
@@ -54,10 +55,15 @@ export function ChatView({ settings }: { settings: AppSettings }) {
     setInput('');
     setLoading(true);
     setThinkingSteps([]);
+    setStreamingText('');
 
     try {
       const { answer, sources, durationMs } = await answerQuestion(input, settings, (step) => {
-        setThinkingSteps((prev) => [...prev, step]);
+        if (step.step === 'streaming') {
+          setStreamingText(step.partial);
+        } else {
+          setThinkingSteps((prev) => [...prev, step]);
+        }
       });
       const assistantMsg: ChatMessage = {
         id: (Date.now() + 1).toString(),
@@ -79,6 +85,7 @@ export function ChatView({ settings }: { settings: AppSettings }) {
     }
 
     setThinkingSteps([]);
+    setStreamingText('');
     setLoading(false);
     getPerformanceStats().then(setPerfStats);
   }
@@ -177,8 +184,11 @@ export function ChatView({ settings }: { settings: AppSettings }) {
                   <span className="step-text">Starting...</span>
                 </div>
               )}
-              <div className="thinking-dots"><span /><span /><span /></div>
+              {!streamingText && <div className="thinking-dots"><span /><span /><span /></div>}
             </div>
+            {streamingText && (
+              <div className="streaming-text">{streamingText}<span className="cursor" /></div>
+            )}
           </div>
         )}
         <div ref={bottomRef} />
