@@ -34,7 +34,7 @@ function App() {
   return (
     <div className="app">
       <header className="app-header">
-        <h1>QueryDoc</h1>
+        <h1>QueryDoc <span className="version">v0.2.0</span></h1>
         <p>AI Document Assistant - 100% Local</p>
       </header>
       <nav className="tabs">

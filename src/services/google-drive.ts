@@ -84,6 +84,16 @@ export interface DriveFile {
   modifiedTime: string;
   size?: string;
   md5Checksum?: string;
+  parents?: string[];
+}
+
+export interface DriveItem {
+  id: string;
+  name: string;
+  mimeType: string;
+  modifiedTime: string;
+  size?: string;
+  isFolder: boolean;
 }
 
 const SUPPORTED_TYPES = [
@@ -93,27 +103,73 @@ const SUPPORTED_TYPES = [
   'text/plain',
 ];
 
-export async function listFiles(maxResults: number): Promise<DriveFile[]> {
-  const files: DriveFile[] = [];
-  let pageToken: string | undefined;
-  const typeQuery = SUPPORTED_TYPES
-    .map(t => `mimeType='${t}'`)
-    .join(' or ');
+const FOLDER_TYPE = 'application/vnd.google-apps.folder';
 
-  while (files.length < maxResults) {
+export function isSupportedType(mimeType: string): boolean {
+  return SUPPORTED_TYPES.includes(mimeType);
+}
+
+export async function listFolder(folderId: string): Promise<DriveItem[]> {
+  const items: DriveItem[] = [];
+  let pageToken: string | undefined;
+
+  while (true) {
     let response;
     try {
       response = await gapi.client.drive.files.list({
-        pageSize: Math.min(100, maxResults - files.length),
-        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, size, md5Checksum)',
-        q: `(${typeQuery}) and trashed=false`,
+        pageSize: 100,
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, size)',
+        q: `'${folderId}' in parents and trashed=false`,
+        orderBy: 'folder,name',
         pageToken,
         supportsAllDrives: true,
         includeItemsFromAllDrives: true,
       });
     } catch (err: unknown) {
-      const msg = extractErrorMessage(err);
-      throw new Error(msg);
+      throw new Error(extractErrorMessage(err));
+    }
+
+    const result = response.result;
+    if (result.files) {
+      for (const f of result.files) {
+        const isFolder = f.mimeType === FOLDER_TYPE;
+        if (isFolder || isSupportedType(f.mimeType)) {
+          items.push({
+            id: f.id,
+            name: f.name,
+            mimeType: f.mimeType,
+            modifiedTime: f.modifiedTime || '',
+            size: f.size,
+            isFolder,
+          });
+        }
+      }
+    }
+    pageToken = result.nextPageToken as string | undefined;
+    if (!pageToken) break;
+  }
+
+  return items;
+}
+
+export async function listFilesInFolder(folderId: string): Promise<DriveFile[]> {
+  const files: DriveFile[] = [];
+  let pageToken: string | undefined;
+  const typeQuery = SUPPORTED_TYPES.map(t => `mimeType='${t}'`).join(' or ');
+
+  while (true) {
+    let response;
+    try {
+      response = await gapi.client.drive.files.list({
+        pageSize: 100,
+        fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, size, md5Checksum)',
+        q: `'${folderId}' in parents and (${typeQuery}) and trashed=false`,
+        pageToken,
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      });
+    } catch (err: unknown) {
+      throw new Error(extractErrorMessage(err));
     }
 
     const result = response.result;
@@ -124,13 +180,68 @@ export async function listFiles(maxResults: number): Promise<DriveFile[]> {
     if (!pageToken) break;
   }
 
-  return files.slice(0, maxResults);
+  return files;
+}
+
+export async function listFilesRecursive(folderId: string, maxFiles: number): Promise<DriveFile[]> {
+  const allFiles: DriveFile[] = [];
+  const queue = [folderId];
+
+  while (queue.length > 0 && allFiles.length < maxFiles) {
+    const currentId = queue.shift()!;
+    let pageToken: string | undefined;
+
+    while (allFiles.length < maxFiles) {
+      let response;
+      try {
+        response = await gapi.client.drive.files.list({
+          pageSize: 100,
+          fields: 'nextPageToken, files(id, name, mimeType, modifiedTime, size, md5Checksum)',
+          q: `'${currentId}' in parents and trashed=false`,
+          pageToken,
+          supportsAllDrives: true,
+          includeItemsFromAllDrives: true,
+        });
+      } catch (err: unknown) {
+        throw new Error(extractErrorMessage(err));
+      }
+
+      const result = response.result;
+      if (result.files) {
+        for (const f of result.files) {
+          if (f.mimeType === FOLDER_TYPE) {
+            queue.push(f.id);
+          } else if (isSupportedType(f.mimeType) && allFiles.length < maxFiles) {
+            allFiles.push(f as DriveFile);
+          }
+        }
+      }
+      pageToken = result.nextPageToken as string | undefined;
+      if (!pageToken) break;
+    }
+  }
+
+  return allFiles;
+}
+
+export async function getFileInfo(fileId: string): Promise<DriveFile> {
+  try {
+    const response = await gapi.client.drive.files.get({
+      fileId,
+      fields: 'id, name, mimeType, modifiedTime, size, md5Checksum',
+      supportsAllDrives: true,
+    });
+    return response.result as DriveFile;
+  } catch (err: unknown) {
+    throw new Error(extractErrorMessage(err));
+  }
 }
 
 function extractErrorMessage(err: unknown): string {
   if (err instanceof Error) return err.message;
   if (typeof err === 'string') return err;
   if (err && typeof err === 'object') {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const e = err as Record<string, any>;
     if (e.result?.error?.message) return e.result.error.message;
     if (e.body) {

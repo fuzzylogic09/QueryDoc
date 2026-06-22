@@ -1,9 +1,9 @@
 import { db } from '../db/database';
-import { listFiles, downloadFile, type DriveFile } from './google-drive';
+import { downloadFile, listFilesRecursive, getFileInfo, isSupportedType, type DriveFile } from './google-drive';
 import { extractText } from './extractor';
 import { chunkText } from './chunker';
 import { computeAndStoreEmbeddings } from './embeddings';
-import type { DocumentIndex, Chunk, SyncProgress, AppSettings } from '../types';
+import type { DocumentIndex, Chunk, SyncProgress, AppSettings, SelectedDriveItem } from '../types';
 
 function generateChecksum(content: string): string {
   let hash = 0;
@@ -15,21 +15,49 @@ function generateChecksum(content: string): string {
   return hash.toString(36);
 }
 
+export class SyncController {
+  private aborted = false;
+
+  abort() {
+    this.aborted = true;
+  }
+
+  get isAborted() {
+    return this.aborted;
+  }
+}
+
 export async function synchronize(
+  selectedItems: SelectedDriveItem[],
   settings: AppSettings,
-  onProgress: (p: SyncProgress) => void
+  onProgress: (p: SyncProgress) => void,
+  controller: SyncController
 ): Promise<void> {
   const progress: SyncProgress = {
     phase: 'listing',
     total: 0,
     current: 0,
     errors: [],
+    skipped: 0,
   };
   onProgress({ ...progress });
 
-  let files: DriveFile[];
+  if (controller.isAborted) { progress.phase = 'cancelled'; onProgress({ ...progress }); return; }
+
+  // Resolve all selected items to flat file list
+  const files: DriveFile[] = [];
   try {
-    files = await listFiles(settings.maxDocuments);
+    for (const item of selectedItems) {
+      if (controller.isAborted) break;
+      if (item.isFolder) {
+        const folderFiles = await listFilesRecursive(item.id, settings.maxDocuments - files.length);
+        files.push(...folderFiles);
+      } else if (isSupportedType(item.mimeType)) {
+        const info = await getFileInfo(item.id);
+        files.push(info);
+      }
+      if (files.length >= settings.maxDocuments) break;
+    }
   } catch (e) {
     progress.phase = 'error';
     const msg = e instanceof Error ? e.message : JSON.stringify(e);
@@ -38,11 +66,20 @@ export async function synchronize(
     return;
   }
 
-  progress.total = files.length;
+  if (controller.isAborted) { progress.phase = 'cancelled'; onProgress({ ...progress }); return; }
+
+  const filesToProcess = files.slice(0, settings.maxDocuments);
+  progress.total = filesToProcess.length;
   onProgress({ ...progress });
 
-  for (let i = 0; i < files.length; i++) {
-    const file = files[i];
+  for (let i = 0; i < filesToProcess.length; i++) {
+    if (controller.isAborted) {
+      progress.phase = 'cancelled';
+      onProgress({ ...progress });
+      return;
+    }
+
+    const file = filesToProcess[i];
     progress.current = i + 1;
     progress.currentDocument = file.name;
 
@@ -53,13 +90,15 @@ export async function synchronize(
         existing.modifiedTime === file.modifiedTime &&
         existing.status === 'indexed'
       ) {
+        progress.skipped++;
         continue;
       }
 
       progress.phase = 'downloading';
       onProgress({ ...progress });
-
       const data = await downloadFile(file.id, file.mimeType);
+
+      if (controller.isAborted) { progress.phase = 'cancelled'; onProgress({ ...progress }); return; }
 
       progress.phase = 'extracting';
       onProgress({ ...progress });
@@ -72,10 +111,10 @@ export async function synchronize(
 
       const checksum = generateChecksum(content.text);
       if (existing && existing.checksum === checksum && existing.status === 'indexed') {
+        progress.skipped++;
         continue;
       }
 
-      // Remove old data if re-indexing
       if (existing) {
         const oldChunkIds = await db.chunks.where('documentId').equals(file.id).primaryKeys();
         await db.embeddings.bulkDelete(oldChunkIds);
@@ -96,6 +135,8 @@ export async function synchronize(
       }));
 
       await db.chunks.bulkPut(chunks);
+
+      if (controller.isAborted) { progress.phase = 'cancelled'; onProgress({ ...progress }); return; }
 
       progress.phase = 'embedding';
       onProgress({ ...progress });
@@ -133,6 +174,8 @@ export async function synchronize(
     }
   }
 
-  progress.phase = 'done';
-  onProgress({ ...progress });
+  if (!controller.isAborted) {
+    progress.phase = 'done';
+    onProgress({ ...progress });
+  }
 }
