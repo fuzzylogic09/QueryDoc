@@ -11,12 +11,18 @@ export type SearchStep =
   | { step: 'streaming'; message: string; partial: string }
   | { step: 'done'; message: string; durationMs: number };
 
+export interface SearchCallbacks {
+  onStep?: (step: SearchStep) => void;
+  onToken?: () => void;
+}
+
 export async function answerQuestion(
   question: string,
   settings: AppSettings,
-  onStep?: (step: SearchStep) => void
+  callbacks?: SearchCallbacks
 ): Promise<{ answer: string; sources: SearchResult[]; durationMs: number }> {
   const t0 = performance.now();
+  const { onStep, onToken } = callbacks || {};
 
   onStep?.({ step: 'embedding', message: 'Computing question embedding...' });
   const queryVector = await computeEmbedding(question, settings.embeddingModel);
@@ -43,6 +49,7 @@ export async function answerQuestion(
   onStep?.({ step: 'generating', message: 'Generating response...' });
 
   const answer = await generateResponseStreaming(question, contextChunks, (_token, fullText) => {
+    onToken?.();
     onStep?.({ step: 'streaming', message: 'Generating response...', partial: fullText });
   });
 
