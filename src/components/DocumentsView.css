@@ -1,0 +1,270 @@
+.docs-layout {
+  display: flex;
+  gap: 12px;
+}
+
+.docs-main {
+  flex: 1;
+  min-width: 0;
+}
+
+.docs-main-narrow {
+  max-width: 55%;
+}
+
+.doc-row:hover {
+  background: var(--surface2);
+}
+
+.doc-row-selected {
+  background: rgba(108, 99, 255, 0.08) !important;
+}
+
+/* Detail Panel */
+.doc-detail-panel {
+  width: 400px;
+  flex-shrink: 0;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  overflow-y: auto;
+  max-height: calc(100vh - 160px);
+  position: sticky;
+  top: 16px;
+}
+
+.detail-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--surface);
+  z-index: 2;
+}
+
+.detail-panel-header h3 {
+  font-size: 14px;
+  word-break: break-word;
+}
+
+.detail-panel-section {
+  padding: 12px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.detail-panel-section:last-child {
+  border-bottom: none;
+}
+
+.detail-panel-section h4 {
+  font-size: 12px;
+  text-transform: uppercase;
+  color: var(--text-dim);
+  margin-bottom: 8px;
+}
+
+/* Stats grid */
+.detail-stats-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.detail-stat {
+  background: var(--surface2);
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+}
+
+.detail-stat-value {
+  display: block;
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--primary);
+}
+
+.detail-stat-label {
+  display: block;
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-top: 2px;
+}
+
+/* Metadata grid */
+.metadata-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.meta-row {
+  display: flex;
+  gap: 8px;
+  font-size: 12px;
+  padding: 3px 0;
+}
+
+.meta-key {
+  color: var(--text-dim);
+  flex-shrink: 0;
+  min-width: 90px;
+}
+
+.meta-val {
+  color: var(--text);
+  word-break: break-word;
+}
+
+/* Chunks list */
+.chunks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.chunk-item {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.chunk-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.15s;
+}
+
+.chunk-header:hover {
+  background: var(--surface2);
+}
+
+.chunk-index {
+  color: var(--primary);
+  font-weight: 600;
+  flex-shrink: 0;
+  min-width: 24px;
+}
+
+.chunk-preview {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-dim);
+  font-size: 11px;
+}
+
+.chunk-meta-badges {
+  display: flex;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.chunk-badge {
+  background: var(--surface2);
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 10px;
+  color: var(--text-dim);
+}
+
+.emb-badge {
+  color: var(--primary);
+}
+
+.chunk-expand {
+  color: var(--text-dim);
+  font-size: 10px;
+  flex-shrink: 0;
+}
+
+/* Expanded chunk */
+.chunk-body {
+  border-top: 1px solid var(--border);
+  padding: 8px;
+}
+
+.chunk-text-full {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--surface2);
+  border-radius: 4px;
+  padding: 8px;
+  margin-bottom: 6px;
+}
+
+.chunk-details-row {
+  display: flex;
+  gap: 12px;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 6px;
+}
+
+/* Embedding section */
+.chunk-embedding-section {
+  border-top: 1px solid var(--border);
+  padding-top: 6px;
+  margin-top: 4px;
+}
+
+.chunk-emb-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 11px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.chunk-emb-stats {
+  display: flex;
+  gap: 10px;
+  font-size: 10px;
+  color: var(--text-dim);
+  margin-bottom: 4px;
+}
+
+.chunk-emb-preview {
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--text-dim);
+  background: var(--surface2);
+  padding: 4px 6px;
+  border-radius: 4px;
+  overflow-x: auto;
+}
+
+.chunk-emb-full {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  max-height: 200px;
+  overflow-y: auto;
+  background: var(--bg);
+  border-radius: 4px;
+  padding: 4px;
+}
+
+.emb-val {
+  font-family: monospace;
+  font-size: 9px;
+  padding: 1px 3px;
+  border-radius: 2px;
+  color: var(--text);
+}

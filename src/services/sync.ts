@@ -155,6 +155,8 @@ export async function synchronize(
         lastIndexed: new Date(),
         chunkCount: chunks.length,
         status: 'indexed',
+        metadata: content.metadata,
+        textLength: content.text.length,
       };
       await db.documents.put(doc);
     } catch (e) {
