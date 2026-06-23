@@ -1,3 +1,15 @@
+export interface DocumentMetadata {
+  title?: string;
+  author?: string;
+  subject?: string;
+  keywords?: string;
+  creator?: string;
+  producer?: string;
+  creationDate?: string;
+  modDate?: string;
+  pageCount?: number;
+}
+
 export interface DocumentIndex {
   id: string;
   name: string;
@@ -8,6 +20,8 @@ export interface DocumentIndex {
   lastIndexed: Date;
   chunkCount: number;
   status: 'indexed' | 'error' | 'processing';
+  metadata?: DocumentMetadata;
+  textLength?: number;
 }
 
 export interface Chunk {

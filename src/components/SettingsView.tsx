@@ -56,6 +56,10 @@ export function SettingsView({ settings, onSave }: { settings: AppSettings; onSa
           <select value={local.embeddingModel} onChange={(e) => update('embeddingModel', e.target.value)}>
             <option value="Xenova/all-MiniLM-L6-v2">all-MiniLM-L6-v2 (fast, 22MB)</option>
             <option value="Xenova/bge-small-en-v1.5">BGE Small EN (better quality, 33MB)</option>
+            <option value="Xenova/bge-base-en-v1.5">BGE Base EN (high quality, 110MB)</option>
+            <option value="Xenova/bge-large-en-v1.5">BGE Large EN (best quality, 335MB)</option>
+            <option value="nomic-ai/nomic-embed-text-v1">Nomic Embed Text v1 (137MB)</option>
+            <option value="mixedbread-ai/mxbai-embed-large-v1">Mixedbread Embed Large (335MB)</option>
           </select>
         </div>
         <div className="field">
